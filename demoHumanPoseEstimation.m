@@ -1,0 +1,127 @@
+%% Human Pose Estimation
+
+% This is a sample implementation of the paper:
+%   Estimating Human Pose from Occluded Images
+%   Jia-Bin Huang and Ming-Hsuan Yang
+%   Proceedings of Asian Conference on Computer Vision (ACCV 2009), Xian, China, September, 2009.
+%
+% Comments and bug report are welcome. Please contact:
+% Jia-Bin Huang,  E-Mail: jbhuang1@illinois.edu
+% 
+% Download YALL1 toolbox via
+% http://yall1.blogs.rice.edu/
+% Download GPLVM toolbox via 
+% http://www.cs.man.ac.uk/neill-bin/software/downloadForm.cgi?toolbox=gplvm
+
+clear;
+
+addpath(genpath('human_pose_estimation/'));
+addpath(genpath('tool/'));
+addpath(genpath('dataset/'));
+
+%% Load dataset
+% Silhouettes
+% feature
+datasetPath = 'dataset/';
+datasetName = 'INRIAPose/';
+featureType = 1;
+% 0: histogram of shape contest 
+% 1: downsample version
+
+occlusionLevel = 0.3; % This is the parameter between [0,1] simulating the occlusion level
+[X, y1, XTest, yTest] = loadPoseData(datasetPath, datasetName, featureType, occlusionLevel);
+
+% unit norm normalization
+% xNormVec = sum(X.^2,2);
+% xTestNormVec = sum(XTest.^2,2);
+% X = X./repmat(xNormVec,1, size(X,2));
+% XTest = XTest./repmat(xTestNormVec,1, size(XTest,2));
+
+%% Set up environment variables
+gplvmenv;
+rand('seed', 1e5);
+wrap_flag = 1;
+cos_sin_flag = 0;
+optimization_solver = 1;
+
+%% Training
+% Learning Gaussian process regressor
+model = trainGPR(X, y1, wrap_flag, cos_sin_flag, optimization_solver);
+
+% Save the model
+capName = datasetName(1:end-1);
+save(['pose_model',datasetName(1:end-1),'.mat'], 'model');
+
+%% Signal Recovery via Sparse Coding
+signalRecFlag = 0; 
+% 1: reconstruct signal using sparse codin
+% 0: pass the sparse coding process                     
+if(signalRecFlag)
+
+% sigma = 1e2;
+% opts.tol = 5e-8;
+% if sigma > 0;
+%     opts.tol = 5e-3;
+%     opts.rho = sigma;
+% end
+opts.rho = 5e-2;
+opts.tol = 0;
+opts.print = 0;
+% opts.nonorth = 1;
+opts.nonneg = 1;
+
+numTrainSample = size(X,1);
+numTestSample = size(XTest,1);
+numTestSample = 100;
+XTest = XTest(1:numTestSample,:);
+
+XTestRec = zeros(numTestSample, size(X,2));
+XTest = double(XTest);
+Aext = double(cat(2, X', diag(ones(1,size(X,2))), - diag(ones(1,size(X,2)))));
+ 
+% Aext = double(X');
+
+for i = 1 : numTestSample
+    y = XTest(i,:)';
+%     y = X(i,:)';
+%     x0 = At*inv(Aext*Aext)*y
+%     x0 = Aext'*y;
+%     xp = l1eq_pd(x0, Aext, [], y, 1e-3);
+    
+    [xp,Out] = yall1(Aext, y, opts);
+%     figure(2), plot(xp);
+    
+    yRec = X'*xp(1:numTrainSample);
+    XTestRec(i,:) = yRec';
+    disp(['Test sample: ', num2str(i), ' / ', num2str(numTestSample)]);
+%     figure(1), 
+%     subplot(1,3,1), plot(y);
+%     subplot(1,3,2), plot(yRec);
+%     subplot(1,3,3), plot(y-(yRec>0.5));
+%     subplot(1,4,3), plot(y-(yRec>0.5));
+end
+
+XTest = (XTestRec>0.5);
+
+end
+% t0 = tic; [x,Out] = yall1(A, b, opts);
+
+%% Prediction
+% Testing
+
+numTestSample = 100;
+XTest = XTest(1:numTestSample,:);
+
+gp_output = testGPR(model, XTest, cos_sin_flag);
+
+%% Performance evaluation
+% Test
+yTest = yTest(1:numTestSample,:);
+
+[m, m_vec]= angleErrorEval(gp_output, yTest, wrap_flag);
+
+% Report performance
+fprintf(1,'optimization_solver=%d, wrap_flag=%d, cos_sin_flag=%d\n', optimization_solver, wrap_flag, cos_sin_flag);
+fprintf(1,'wrap_flag=%d, mean of all pose angles=%f\n', wrap_flag, m);
+
+

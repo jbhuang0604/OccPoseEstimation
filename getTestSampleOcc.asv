@@ -1,0 +1,20 @@
+function X2 = getTestSampleOcc(X2Raw, ds_scale, occlusionLevel)
+
+    numTestSample = length(X2Raw);
+    for i = 1: numTestSample
+        img = X2Raw{i};
+        % Add occlusion by generating random blocks
+        [imgHeight, imgWidth] = size(img);
+        occBlockSize = imgWidth*occlusionLevel;
+        blkSize = rand(1,2)*imgWidth*occlusionLevel;
+        blkPos = (rand(1,2).*[imgHeight-blkSize(1), imgWidth-blkSize(2)] + [0.5*blkSize(1), 0.5*blkSize(2)]);
+        r1 = round(blkPos(1)-0.5*blkSize(1));
+        r1 = round(blkPos(1)+0.5*blkSize(1));
+        c1 = round(blkPos(1)+0.5*blkSize(1));
+        
+        imgOcc = img(blkPos(1)-0.5*)
+        imgD = imresize(img, ds_scale);
+        X2(:,i) = imgD(:);
+    end
+
+end
